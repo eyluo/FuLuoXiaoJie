@@ -1,0 +1,37 @@
+services:
+  fuluoxiaojie:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fuluoxiaojie:local
+    container_name: fuluoxiaojie
+    restart: unless-stopped
+    init: true
+    ports:
+      # Safe default: bind loopback only (ideal behind Tailscale Serve, Cloudflare Tunnel, or Caddy).
+      # To allow direct LAN access on your home Wi-Fi (http://<pi-ip>:3000), set BIND_HOST=0.0.0.0 in .env.
+      - "${BIND_HOST:-127.0.0.1}:${HOST_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      DATA_DIR: /data
+      # Optional: pre-seed the initial login passphrase (min 8 chars). If empty, set it in the browser on first visit.
+      APP_PASSPHRASE: ${APP_PASSPHRASE:-}
+      # DANGER: Set AUTH_DISABLED=true ONLY if an upstream Zero Trust proxy (e.g. Cloudflare Access) handles all auth.
+      AUTH_DISABLED: ${AUTH_DISABLED:-false}
+      # Set TRUST_PROXY=true ONLY when running behind a local reverse proxy (Tailscale Serve, Caddy, cloudflared).
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      # Set TRUST_CLOUDFLARE_IP=true ONLY when traffic enters exclusively through Cloudflare Tunnel / Proxy.
+      TRUST_CLOUDFLARE_IP: ${TRUST_CLOUDFLARE_IP:-false}
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+    volumes:
+      # Named Docker volume avoids root-owned bind-mount permission errors with the non-root node user.
+      # Prefer a host folder? Create it first (`mkdir -p ./fuluoxiaojie-data && chown 1000:1000 ./fuluoxiaojie-data`)
+      # and replace the line below with `./fuluoxiaojie-data:/data`.
+      - fuluoxiaojie_data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  fuluoxiaojie_data:

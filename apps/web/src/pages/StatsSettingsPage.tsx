@@ -812,7 +812,7 @@ export function StatsSettingsPage() {
               {auth?.authDisabled ? (
                 <div style={{ fontSize: 13, color: "var(--ink-secondary)" }}>
                   Passphrase authentication is currently disabled via{" "}
-                  <code className="mono">DISABLE_AUTH=true</code>. Keep this instance strictly on a
+                  <code className="mono">AUTH_DISABLED=true</code>. Keep this instance strictly on a
                   private local network or behind a Zero Trust proxy.
                 </div>
               ) : (
