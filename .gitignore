@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Local caches & compiled static bundle (reproducible via scripts/build-data/build_all.py)
+.cache/
+data/*
+!data/.gitkeep
+
+# Local runtime SQLite databases & environment files
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+fuluoxiaojie-data/
+
+# Python / OS / IDE
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+Thumbs.db

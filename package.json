@@ -1,0 +1,19 @@
+{
+  "name": "fuluoxiaojie",
+  "version": "1.0.0",
+  "private": true,
+  "description": "弗洛小姐 (FuLuoXiaoJie) — Self-hosted Simplified Mandarin character DAG explorer, PageRank/propagation sandbox, dynamic study planner, and FSRS flashcard studio.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "scripts": {
+    "data:build": "python3 scripts/build-data/build_all.py",
+    "data:test": "python3 -m unittest discover -s scripts/build-data -p 'test_*.py' -v",
+    "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
