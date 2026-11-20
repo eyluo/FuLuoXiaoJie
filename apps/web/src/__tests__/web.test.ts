@@ -3,6 +3,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api, setUnauthorizedHandler, type ProgressEntry } from "../api/client.js";
 import { AudioBlobCache } from "../hooks/useAudio.js";
 import {
+  buildHeatmapGrid,
+  fillForecast14d,
+  matchPinyinAnswer,
+  parseImportedCharacters,
+  parsePinyinSyllable,
+} from "../utils/pinyinMatch.js";
+import {
   buildSatisfiedIdSet,
   computeHoverBands,
   getEffectiveNotes,
@@ -166,3 +173,106 @@ describe("AudioBlobCache LRU & API Client 401 Handling", () => {
     expect(hdrs.get("content-type")).toBe("application/json");
   });
 });
+
+describe("Phase 5 Pinyin Matching, Bulk Import Parsing & Stats Calendars", () => {
+  it("normalizes tone-marked, numbered, ü/v/u:/uu, j/q/x/y+v, and neutral-tone pinyin answers", () => {
+    expect(parsePinyinSyllable("qǐng")).toEqual({ base: "qing", tone: 3 });
+    expect(parsePinyinSyllable("  QING3 ")).toEqual({ base: "qing", tone: 3 });
+    expect(parsePinyinSyllable("nǚ")).toEqual({ base: "nv", tone: 3 });
+    expect(parsePinyinSyllable("nu:3")).toEqual({ base: "nv", tone: 3 });
+    expect(parsePinyinSyllable("nuu3")).toEqual({ base: "nv", tone: 3 });
+    expect(parsePinyinSyllable("lüè")).toEqual({ base: "lve", tone: 4 });
+    expect(parsePinyinSyllable("yv4")).toEqual({ base: "yu", tone: 4 });
+
+    expect(matchPinyinAnswer("qing3", ["qǐng"], ["qing3"])).toEqual({
+      status: "exact",
+      matchedReading: "qǐng",
+    });
+    expect(matchPinyinAnswer("qǐng", ["qǐng"], ["qing3"])).toEqual({
+      status: "exact",
+      matchedReading: "qǐng",
+    });
+    expect(matchPinyinAnswer("lv4", ["lǜ", "lù"], ["lv4", "lu4"])).toEqual({
+      status: "exact",
+      matchedReading: "lǜ",
+    });
+    expect(matchPinyinAnswer("lu4", ["lǜ", "lù"], ["lv4", "lu4"])).toEqual({
+      status: "exact",
+      matchedReading: "lù",
+    });
+    // Neutral tone matches unmarked input and explicit 5
+    expect(matchPinyinAnswer("de", ["de", "dí"], ["de5", "di2"])).toEqual({
+      status: "exact",
+      matchedReading: "de",
+    });
+    expect(matchPinyinAnswer("de5", ["de", "dí"], ["de5", "di2"])).toEqual({
+      status: "exact",
+      matchedReading: "de",
+    });
+    // Right syllable, wrong or omitted tone -> tone-close
+    expect(matchPinyinAnswer("qing1", ["qǐng"], ["qing3"])).toEqual({
+      status: "tone-close",
+      matchedReading: "qǐng",
+    });
+    expect(matchPinyinAnswer("qing", ["qǐng"], ["qing3"])).toEqual({
+      status: "tone-close",
+      matchedReading: "qǐng",
+    });
+    // NFD combining marks present in graph.json (姆 m̄, 呣 m̀) and decomposed ü + tone
+    expect(parsePinyinSyllable("m\u0304")).toEqual({ base: "m", tone: 1 });
+    expect(parsePinyinSyllable("m\u0300")).toEqual({ base: "m", tone: 4 });
+    expect(parsePinyinSyllable("lu\u0304\u0308")).toEqual({ base: "lv", tone: 1 });
+    expect(parsePinyinSyllable("lu\u0308\u0304")).toEqual({ base: "lv", tone: 1 });
+    expect(matchPinyinAnswer("m\u0304", ["mǔ", "m\u0304"], ["mu3", "m1"])).toEqual({
+      status: "exact",
+      matchedReading: "m\u0304",
+    });
+    expect(matchPinyinAnswer("m\u0300", ["ḿ", "m\u0300"], ["m2", "m4"])).toEqual({
+      status: "exact",
+      matchedReading: "m\u0300",
+    });
+    // Reject contradictory / duplicate tone markers
+    expect(parsePinyinSyllable("qīng3")).toBeNull();
+    expect(parsePinyinSyllable("māá")).toBeNull();
+    expect(matchPinyinAnswer("qīng3", ["qǐng"], ["qing3"]).status).toBe("wrong");
+    // Wrong syllable
+    expect(matchPinyinAnswer("ma1", ["qǐng"], ["qing3"]).status).toBe("wrong");
+    expect(matchPinyinAnswer("   ", ["qǐng"], ["qing3"]).status).toBe("empty");
+  });
+
+  it("deduplicates non-ASCII characters from CSV/TSV/freeform bulk imports", () => {
+    const parsed = parseImportedCharacters("char,pinyin\n青,qing1\n请,qing3\n晴,qing2\n青,duplicate");
+    expect(parsed).toEqual(["青", "请", "晴"]);
+  });
+
+  it("fills contiguous UTC 13-week heatmap grid and clamps overdue dates into Today in 14-day forecast", () => {
+    const grid = buildHeatmapGrid(
+      [
+        { date: "2026-11-20", count: 14, againCount: 2 },
+        { date: "2026-11-18", count: 5, againCount: 0 },
+      ],
+      "2026-11-20"
+    );
+    expect(grid.length).toBeGreaterThanOrEqual(85);
+    expect(grid.length).toBeLessThanOrEqual(91);
+    expect(grid[0]!.dayOfWeek).toBe(0); // Sunday-aligned start
+    expect(grid[grid.length - 1]!.date).toBe("2026-11-20");
+    expect(grid[grid.length - 1]!.count).toBe(14);
+    expect(grid[grid.length - 1]!.againCount).toBe(2);
+
+    const fc = fillForecast14d(
+      [
+        { date: "2026-11-18", count: 7 }, // overdue -> clamped into Today
+        { date: "2026-11-20", count: 3 },
+        { date: "2026-11-23", count: 4 },
+      ],
+      "2026-11-20"
+    );
+    expect(fc).toHaveLength(14);
+    expect(fc[0]).toEqual({ date: "2026-11-20", label: "Today", count: 10 });
+    expect(fc[1]).toEqual({ date: "2026-11-21", label: "11-21", count: 0 });
+    expect(fc[3]).toEqual({ date: "2026-11-23", label: "11-23", count: 4 });
+    expect(fc[13]!.date).toBe("2026-12-03");
+  });
+});
+

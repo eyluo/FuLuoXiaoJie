@@ -57,11 +57,18 @@ interface AppStateContextValue {
     nodeId: string,
     patch: { status?: NodeStatus; notes?: string }
   ) => Promise<void>;
+  bulkImportProgress: (
+    payload: Parameters<typeof api.bulkImportProgress>[0]
+  ) => Promise<{ importedCount: number; status: NodeStatus; nodeIds: string[] }>;
   enrollNodes: (nodeIds: string[]) => Promise<{ enrolledNodes: string[]; createdCards: number }>;
   unenrollNode: (nodeId: string) => Promise<void>;
+  ensureServerMergeModeAligned: () => Promise<void>;
   saveSettings: (patch: { sandbox?: Partial<SandboxConfig>; srs?: Partial<SrsSettings> }) => Promise<void>;
   savePreset: (name: string) => Promise<void>;
   deletePreset: (id: string) => Promise<void>;
+  restoreBackup: (
+    json: unknown
+  ) => Promise<{ ok: boolean; restoredProgress: number; restoredCards: number; restoredLogs: number }>;
   logout: () => Promise<void>;
 }
 
@@ -108,8 +115,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setEnrolledNodeIds(new Set());
     setDueCount(0);
     setLoadError(null);
+    const freshSandbox = { ...DEFAULT_SANDBOX_CONFIG };
+    settingsRef.current = DEFAULT_SETTINGS;
+    sandboxConfigRef.current = freshSandbox;
     setSettings(DEFAULT_SETTINGS);
-    setSandboxConfig({ ...DEFAULT_SANDBOX_CONFIG });
+    setSandboxConfig(freshSandbox);
   }, []);
 
   // Register global 401 session-expiration handler so mid-session timeouts cleanly return to AuthGate
@@ -159,6 +169,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           api.getSrsCards(),
         ]);
 
+      settingsRef.current = settingsData;
+      sandboxConfigRef.current = settingsData.sandbox;
       setDataset(graphData);
       setExamples(examplesData);
       setSettings(settingsData);
@@ -253,6 +265,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [ensureServerMergeModeAligned]
   );
 
+  const bulkImportProgress = useCallback(
+    async (payload: Parameters<typeof api.bulkImportProgress>[0]) => {
+      await ensureServerMergeModeAligned();
+      const res = await api.bulkImportProgress(payload);
+      await refreshDueAndCards();
+      return res;
+    },
+    [ensureServerMergeModeAligned, refreshDueAndCards]
+  );
+
   const enrollNodes = useCallback(
     async (nodeIds: string[]) => {
       await ensureServerMergeModeAligned();
@@ -275,6 +297,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const saveSettings = useCallback(
     async (patch: { sandbox?: Partial<SandboxConfig>; srs?: Partial<SrsSettings> }) => {
       const next = await api.updateSettings(patch);
+      settingsRef.current = next;
       setSettings(next);
       if (patch.sandbox) {
         setSandboxConfig(next.sandbox);
@@ -293,6 +316,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await api.deletePreset(id);
     setPresets((prev) => prev.filter((p) => p.id !== id));
   }, []);
+
+  const restoreBackup = useCallback(
+    async (json: unknown) => {
+      const res = await api.importBackup(json);
+      await refreshAuthAndData();
+      return res;
+    },
+    [refreshAuthAndData]
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -338,11 +370,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         refreshAuthAndData,
         refreshDueAndCards,
         updateNodeProgress,
+        bulkImportProgress,
         enrollNodes,
         unenrollNode,
+        ensureServerMergeModeAligned,
         saveSettings,
         savePreset,
         deletePreset,
+        restoreBackup,
         logout,
       }}
     >

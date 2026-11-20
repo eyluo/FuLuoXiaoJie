@@ -2,10 +2,13 @@ import { AppShell } from "./components/AppShell.js";
 import { AuthGate } from "./components/AuthGate.js";
 import { AppStateProvider, useAppState } from "./hooks/useAppState.js";
 import { ExplorerPage } from "./pages/ExplorerPage.js";
+import { PlannerPage } from "./pages/PlannerPage.js";
+import { ReviewPage } from "./pages/ReviewPage.js";
 import { SandboxPage } from "./pages/SandboxPage.js";
+import { StatsSettingsPage } from "./pages/StatsSettingsPage.js";
 
 function WorkspaceRouter() {
-  const { auth, loading, loadError, activeTab, setActiveTab, refreshAuthAndData } = useAppState();
+  const { auth, loading, loadError, activeTab, refreshAuthAndData } = useAppState();
 
   if (loading && !auth) {
     return (
@@ -43,18 +46,9 @@ function WorkspaceRouter() {
     <AppShell>
       {activeTab === "explorer" && <ExplorerPage />}
       {activeTab === "sandbox" && <SandboxPage />}
-      {(activeTab === "planner" || activeTab === "review" || activeTab === "stats") && (
-        <section className="panel panel-body" style={{ maxWidth: 620, margin: "24px auto", textAlign: "center" }}>
-          <h1 style={{ marginTop: 0, fontSize: 18 }}>Phase 5 Workspace</h1>
-          <p style={{ color: "var(--ink-secondary)", fontSize: 13.5 }}>
-            The Study Planner, 4-Mode FSRS Review Studio, and Stats &amp; Settings views are scheduled for Phase 5.
-            Use the DAG Explorer and Algorithm Sandbox now to inspect characters and tune scoring.
-          </p>
-          <button type="button" className="btn btn-primary" onClick={() => setActiveTab("explorer")}>
-            Return to DAG Explorer
-          </button>
-        </section>
-      )}
+      {activeTab === "planner" && <PlannerPage />}
+      {activeTab === "review" && <ReviewPage />}
+      {activeTab === "stats" && <StatsSettingsPage />}
     </AppShell>
   );
 }
