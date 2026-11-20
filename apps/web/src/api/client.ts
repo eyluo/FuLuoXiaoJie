@@ -1,4 +1,5 @@
 import type { GraphDataset, GraphNode, KnownCoverageSummary, SandboxConfig } from "@fuluoxiaojie/graph-engine";
+import { reportClientError } from "../utils/logger.js";
 
 export type NodeStatus = "unseen" | "learning" | "known" | "ignored";
 export type CardType = "recognition" | "stroke" | "component" | "listening";
@@ -147,7 +148,18 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     handleAuthStatusCode(url, res.status);
     const body = await res.json().catch(() => ({ error: res.statusText }));
-    throw new ApiError(res.status, body.error || `HTTP ${res.status}`);
+    const message = body.error || `HTTP ${res.status}`;
+    if (res.status >= 500) {
+      reportClientError({
+        source: "api-client",
+        message: `${init?.method ?? "GET"} ${url} failed (${res.status}): ${message}`,
+        context: {
+          status: res.status,
+          requestId: res.headers.get("X-Request-Id"),
+        },
+      });
+    }
+    throw new ApiError(res.status, message);
   }
   return (await res.json()) as T;
 }

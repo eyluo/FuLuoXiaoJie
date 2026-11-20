@@ -4,14 +4,25 @@ import { bootstrapPassphraseFromEnv } from "./auth/auth.js";
 import { loadServerConfig } from "./config.js";
 import { loadStaticDataStore } from "./data/staticLoader.js";
 import { openDatabase } from "./db/database.js";
+import { createLogger, serializeError } from "./logger.js";
 
 async function main() {
   const config = loadServerConfig();
+  const logger = createLogger({ level: config.logLevel, logDir: config.logDir });
+
+  process.on("uncaughtException", (err) => {
+    logger.error("Uncaught exception", { kind: "process", error: serializeError(err) });
+    process.exit(1);
+  });
+  process.on("unhandledRejection", (reason) => {
+    logger.error("Unhandled promise rejection", { kind: "process", error: serializeError(reason) });
+  });
+
   const db = openDatabase(config.dbPath);
   await bootstrapPassphraseFromEnv(db, config);
   const store = loadStaticDataStore(config.staticDataDir);
 
-  const app = createApp({ db, store, config });
+  const app = createApp({ db, store, config, logger });
 
   const server = serve(
     {
@@ -20,10 +31,13 @@ async function main() {
       hostname: config.host,
     },
     (info) => {
-      console.log(
-        `FuLuoXiaoJie (弗洛小姐) listening on http://${info.address}:${info.port} ` +
-          `(nodes=${store.graph.meta.nodeCount}, auth=${config.authDisabled ? "disabled" : "passphrase"})`
-      );
+      logger.info("Server listening", {
+        kind: "lifecycle",
+        url: `http://${info.address}:${info.port}`,
+        nodes: store.graph.meta.nodeCount,
+        auth: config.authDisabled ? "disabled" : "passphrase",
+        logFile: logger.logFilePath,
+      });
     }
   );
 
@@ -31,7 +45,7 @@ async function main() {
   const shutdown = (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    console.log(`Received ${signal}, shutting down cleanly...`);
+    logger.info("Shutting down cleanly", { kind: "lifecycle", signal });
 
     const forceTimer = setTimeout(() => {
       try {

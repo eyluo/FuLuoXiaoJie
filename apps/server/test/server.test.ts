@@ -9,6 +9,7 @@ import { hashPassphrase, LoginRateLimiter, verifyPassphrase } from "../src/auth/
 import { loadServerConfig } from "../src/config.js";
 import { loadStaticDataStore, type StaticDataStore } from "../src/data/staticLoader.js";
 import { openDatabase, type AppDatabase } from "../src/db/database.js";
+import { createLogger, type LogRecord } from "../src/logger.js";
 import { buildComponentChoices, buildListeningChoices } from "../src/services/srs.js";
 
 function extractCookie(res: Response): string {
@@ -417,5 +418,54 @@ describe("FuLuoXiaoJie Backend API Integration", () => {
     expect((await orphanRes.json()).restoredLogs).toBe(0);
 
     tdb.close();
+  });
+
+  it("logs API requests with X-Request-Id and accepts authenticated client error reports", async () => {
+    const records: LogRecord[] = [];
+    const logger = createLogger({
+      level: "debug",
+      logDir: null,
+      sink: (_line, record) => records.push(record),
+    });
+    const testDb = openDatabase(":memory:");
+    const config = loadServerConfig({
+      dbPath: ":memory:",
+      staticDataDir,
+      authDisabled: true,
+      trustProxy: true,
+    });
+    const app = createApp({ db: testDb, store, config, logger });
+
+    const healthRes = await app.request("/api/health");
+    expect(healthRes.status).toBe(200);
+    expect(healthRes.headers.get("X-Request-Id")).toBeTruthy();
+
+    const logRes = await app.request("/api/client-logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        level: "error",
+        source: "window.onerror",
+        message: "Test UI crash",
+        stack: "Error: Test UI crash\n    at foo.tsx:10",
+        url: "/review",
+        context: { cardId: "123" },
+      }),
+    });
+    expect(logRes.status).toBe(200);
+    const clientRecord = records.find((r) => r.kind === "client");
+    expect(clientRecord).toBeDefined();
+    expect(clientRecord?.level).toBe("error");
+    expect(clientRecord?.source).toBe("window.onerror");
+    expect(clientRecord?.msg).toBe("Test UI crash");
+
+    const badLogRes = await app.request("/api/client-logs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ level: "error" }),
+    });
+    expect(badLogRes.status).toBe(400);
+
+    testDb.close();
   });
 });

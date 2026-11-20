@@ -1,10 +1,13 @@
 import { resolve } from "node:path";
+import { parseLogLevel, type LogLevel } from "./logger.js";
 
 export interface ServerConfig {
   port: number;
   host: string;
   dataDir: string;
   dbPath: string;
+  logDir: string | null;
+  logLevel: LogLevel;
   staticDataDir: string;
   webDistDir: string;
   appPassphrase: string;
@@ -29,6 +32,15 @@ export function loadServerConfig(overrides: Partial<ServerConfig> = {}): ServerC
     : resolve(process.env.DATA_DIR || resolve(cwd, "fuluoxiaojie-data"));
   const dbPath =
     overrides.dbPath ?? (dataDir === ":memory:" ? ":memory:" : resolve(dataDir, "fuluoxiaojie.db"));
+  const defaultLogDir =
+    dbPath === ":memory:" || dataDir === ":memory:"
+      ? null
+      : process.env.LOG_DIR
+        ? resolve(process.env.LOG_DIR)
+        : resolve(dataDir, "logs");
+  const defaultLogLevel: LogLevel =
+    process.env.NODE_ENV === "test" || process.env.VITEST ? "silent" : "info";
+  const logLevel = parseLogLevel(process.env.LOG_LEVEL, defaultLogLevel);
 
   const portParsed = Number.parseInt(process.env.PORT || "3000", 10);
   const ttlParsed = Number.parseInt(process.env.SESSION_TTL_DAYS || "30", 10);
@@ -38,6 +50,8 @@ export function loadServerConfig(overrides: Partial<ServerConfig> = {}): ServerC
     host: process.env.HOST || "0.0.0.0",
     dataDir,
     dbPath,
+    logDir: defaultLogDir,
+    logLevel,
     staticDataDir: defaultStaticDir,
     webDistDir: defaultWebDistDir,
     appPassphrase: (process.env.APP_PASSPHRASE || "").trim(),

@@ -28,6 +28,7 @@ import {
 import type { ServerConfig } from "./config.js";
 import type { StaticDataStore } from "./data/staticLoader.js";
 import { withTransaction, type AppDatabase } from "./db/database.js";
+import { createLogger, serializeError, type Logger } from "./logger.js";
 import { buildExportRows, generateAnkiApkg, generateAnkiCsv } from "./services/anki.js";
 import {
   DEFAULT_USER_SETTINGS,
@@ -212,11 +213,21 @@ const BackupImportSchema = z.object({
     .optional(),
 });
 
+const ClientLogSchema = z.object({
+  level: z.enum(["warn", "error"]).default("error"),
+  source: z.string().min(1).max(64),
+  message: z.string().min(1).max(2000),
+  stack: z.string().max(8000).optional(),
+  url: z.string().max(512).optional(),
+  context: z.record(z.unknown()).optional(),
+});
+
 export interface CreateAppDeps {
   db: AppDatabase;
   store: StaticDataStore;
   config: ServerConfig;
   rateLimiter?: LoginRateLimiter;
+  logger?: Logger;
 }
 
 export function createApp({
@@ -224,15 +235,64 @@ export function createApp({
   store,
   config,
   rateLimiter = new LoginRateLimiter(),
-}: CreateAppDeps): Hono {
-  const app = new Hono();
+  logger = createLogger({ level: config.logLevel, logDir: config.logDir }),
+}: CreateAppDeps): Hono<{ Variables: { requestId: string } }> {
+  const app = new Hono<{ Variables: { requestId: string } }>();
 
-  // Security headers on all responses
+  // Assign a request ID and log API requests/responses with latency
   app.use("*", async (c, next) => {
+    const requestId = randomUUID().slice(0, 8);
+    c.set("requestId", requestId);
+    const startMs = Date.now();
     await next();
+    c.header("X-Request-Id", requestId);
     c.header("X-Content-Type-Options", "nosniff");
     c.header("X-Frame-Options", "DENY");
     c.header("Referrer-Policy", "same-origin");
+
+    const path = c.req.path;
+    if (path.startsWith("/api/")) {
+      const status = c.res.status;
+      if (path === "/api/health" && status < 400) {
+        logger.debug("API request", {
+          kind: "http",
+          requestId,
+          method: c.req.method,
+          path,
+          status,
+          durationMs: Date.now() - startMs,
+        });
+      } else {
+        const fields = {
+          kind: "http",
+          requestId,
+          method: c.req.method,
+          path,
+          status,
+          durationMs: Date.now() - startMs,
+        };
+        if (status >= 500) {
+          logger.error("API request failed", fields);
+        } else if (status >= 400) {
+          logger.warn("API client error", fields);
+        } else {
+          logger.info("API request", fields);
+        }
+      }
+    }
+  });
+
+  app.onError((err, c) => {
+    const requestId = c.get("requestId") ?? randomUUID().slice(0, 8);
+    logger.error("Unhandled server error", {
+      kind: "http",
+      requestId,
+      method: c.req.method,
+      path: c.req.path,
+      error: serializeError(err),
+    });
+    c.header("X-Request-Id", requestId);
+    return c.json({ error: "Internal server error", requestId }, 500);
   });
 
   // Protect Raspberry Pi RAM from oversized request bodies
@@ -746,7 +806,7 @@ export function createApp({
     });
   });
 
-  app.get("/api/backup/export", requireAuth, (c) => {
+  app.get("/api/backup/export", requireAuth, () => {
     const settings = getUserSettings(db);
     const presets = (
       db
@@ -937,6 +997,30 @@ export function createApp({
       restoredCards: data.srsCards.length,
       restoredLogs: insertedLogs,
     });
+  });
+
+  app.post("/api/client-logs", requireAuth, async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const parsed = ClientLogSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid client log payload" }, 400);
+    }
+    const { level, source, message, stack, url, context } = parsed.data;
+    const fields = {
+      kind: "client",
+      requestId: c.get("requestId"),
+      source,
+      url,
+      stack,
+      context,
+      userAgent: (c.req.header("user-agent") ?? "").slice(0, 200),
+    };
+    if (level === "warn") {
+      logger.warn(message, fields);
+    } else {
+      logger.error(message, fields);
+    }
+    return c.json({ ok: true });
   });
 
   app.all("/api/*", (c) => c.json({ error: "API endpoint not found" }, 404));
