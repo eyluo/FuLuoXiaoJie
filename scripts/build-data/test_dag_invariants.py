@@ -7,6 +7,7 @@ import json
 import unittest
 from collections import defaultdict, deque
 from pathlib import Path
+from typing import Any
 
 from build_audio import is_valid_mp3_bytes
 from build_graph import is_cjk_glyph
@@ -37,7 +38,9 @@ def assert_acyclic(node_ids: set[str], edges: list[tuple[str, str]]) -> list[str
 
     if len(order) != len(node_ids):
         cycle_nodes = sorted(node_ids - set(order))
-        raise AssertionError(f"Cycle detected involving {len(cycle_nodes)} nodes: {cycle_nodes[:10]}")
+        raise AssertionError(
+            f"Cycle detected involving {len(cycle_nodes)} nodes: {cycle_nodes[:10]}"
+        )
     return order
 
 
@@ -61,13 +64,19 @@ class TestPinyinUtils(unittest.TestCase):
 
 
 class TestMandarinDagInvariants(unittest.TestCase):
+    graph: dict[str, Any]
+    examples: dict[str, list[dict[str, Any]]]
+    node_by_id: dict[str, dict[str, Any]]
+    incoming: dict[str, dict[str, dict[str, Any]]]
+    outgoing: dict[str, dict[str, dict[str, Any]]]
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.graph = json.loads((DATA_DIR / "graph.json").read_text(encoding="utf-8"))
         cls.examples = json.loads((DATA_DIR / "examples.json").read_text(encoding="utf-8"))
         cls.node_by_id = {n["id"]: n for n in cls.graph["nodes"]}
-        cls.incoming: dict[str, dict[str, dict]] = defaultdict(dict)
-        cls.outgoing: dict[str, dict[str, dict]] = defaultdict(dict)
+        cls.incoming = defaultdict(dict)
+        cls.outgoing = defaultdict(dict)
         for e in cls.graph["edges"]:
             cls.incoming[e["target"]][e["source"]] = e
             cls.outgoing[e["source"]][e["target"]] = e
@@ -93,7 +102,9 @@ class TestMandarinDagInvariants(unittest.TestCase):
         for e in self.graph["edges"]:
             u = resolve(e["source"])
             v = resolve(e["target"])
-            self.assertNotEqual(u, v, f"Variant merge created self-loop: {e['source']} -> {e['target']} via {u}")
+            self.assertNotEqual(
+                u, v, f"Variant merge created self-loop: {e['source']} -> {e['target']} via {u}"
+            )
             contracted_edges_set.add((u, v))
 
         order = assert_acyclic(contracted_nodes, list(contracted_edges_set))
@@ -227,12 +238,42 @@ class TestMandarinDagInvariants(unittest.TestCase):
                     missing_audio.append((node["id"], node["syllables"], af))
         self.assertEqual(missing_audio, [], f"Core chars missing valid audio: {missing_audio[:10]}")
 
+    def test_word_audio_files_integrity(self) -> None:
+        audio_dir = DATA_DIR / "audio"
+        manifest = json.loads((audio_dir / "manifest.json").read_text(encoding="utf-8"))
+        word_stats = manifest.get("wordAudio", {})
+        self.assertGreaterEqual(word_stats.get("bundledWords", 0), 3500)
+
+        checked_files: set[str] = set()
+        for ch, ex_list in self.examples.items():
+            for ex in ex_list:
+                af = ex.get("audio")
+                if not af:
+                    continue
+                self.assertRegex(
+                    af, r"^w_[0-9a-f]{4,64}\.mp3$", f"Bad word audio name {af!r} under {ch}"
+                )
+                if af in checked_files:
+                    continue
+                p = audio_dir / af
+                self.assertTrue(p.exists(), f"Missing word audio file {p}")
+                if len(checked_files) < 100:
+                    self.assertTrue(is_valid_mp3_bytes(p.read_bytes()), f"Invalid MP3 {p}")
+                checked_files.add(af)
+        self.assertEqual(len(checked_files), word_stats.get("bundledWords", 0))
+
     def test_examples_hygiene_and_proper_noun_filtering(self) -> None:
         for ch, ex_list in self.examples.items():
             for ex in ex_list:
                 w = ex["word"]
-                self.assertTrue(all(is_cjk_glyph(c) for c in w), f"Non-CJK example word {w!r} under {ch}")
-                self.assertEqual(len(ex["numbered"].split()), len(w), f"Syllable mismatch on {w!r}: {ex['numbered']}")
+                self.assertTrue(
+                    all(is_cjk_glyph(c) for c in w), f"Non-CJK example word {w!r} under {ch}"
+                )
+                self.assertEqual(
+                    len(ex["numbered"].split()),
+                    len(w),
+                    f"Syllable mismatch on {w!r}: {ex['numbered']}",
+                )
 
         # Verify key everyday words were NOT hijacked by CC-CEDICT proper nouns
         word_gloss: dict[str, str] = {}

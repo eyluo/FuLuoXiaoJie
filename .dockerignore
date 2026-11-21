@@ -14,10 +14,15 @@ data
 **/*.db-shm
 **/*.db-wal
 **/*.log
+.venv
+.mypy_cache
+.ruff_cache
 __pycache__
 **/__pycache__
 **/*.pyc
 .pytest_cache
+eslint.config.js
+pyproject.toml
 **/.DS_Store
 Thumbs.db
 docker-compose*.yml

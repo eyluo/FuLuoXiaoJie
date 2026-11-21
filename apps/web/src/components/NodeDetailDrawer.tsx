@@ -460,7 +460,7 @@ export function NodeDetailPanel({ nodeId, onSelectNode, onClose }: NodeDetailPro
                 <button
                   type="button"
                   className="btn btn-ghost btn-icon"
-                  onClick={() => speakWord(ex.word)}
+                  onClick={() => speakWord(ex.word, ex.audio)}
                   title={`Speak ${ex.word}`}
                   aria-label={`Speak ${ex.word}`}
                 >

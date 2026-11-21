@@ -10,7 +10,7 @@ interface RecognitionDrillProps {
   revealed: boolean;
   onReveal: () => void;
   onPlaySyllable: (audioFile: string | null | undefined, fallbackText?: string) => void;
-  onSpeakWord: (word: string) => void;
+  onSpeakWord: (word: string, audioFile?: string | null) => void;
   onInspectNode: (id: string) => void;
 }
 

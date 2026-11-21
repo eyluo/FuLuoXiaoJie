@@ -28,7 +28,17 @@ def main() -> None:
     build_audio()
     print("\n=== [6/6] Running hard DAG & data invariant tests ===")
     res = subprocess.run(
-        [sys.executable, "-m", "unittest", "discover", "-s", str(SCRIPT_DIR), "-p", "test_*.py", "-v"],
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            str(SCRIPT_DIR),
+            "-p",
+            "test_*.py",
+            "-v",
+        ],
         check=False,
     )
     if res.returncode != 0:

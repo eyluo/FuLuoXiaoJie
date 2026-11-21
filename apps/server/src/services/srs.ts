@@ -52,9 +52,10 @@ export interface DueCardPayload {
     word: string;
     pinyin: string;
     gloss: string;
+    audio?: string;
   } | null;
   listeningChoices: Array<{ id: string; pinyin: string[]; definition: string }>;
-  examples: Array<{ word: string; pinyin: string; numbered: string; gloss: string }>;
+  examples: Array<{ word: string; pinyin: string; numbered: string; gloss: string; audio?: string }>;
   notes: string;
   previews: ReviewIntervalPreview[];
 }
@@ -415,6 +416,7 @@ export function getDueQueue(
             maskedWord: firstEx.word.split(node.id).join("＿"),
             pinyin: firstEx.pinyin,
             gloss: firstEx.gloss,
+            ...(firstEx.audio ? { audio: firstEx.audio } : {}),
           }
         : null;
 

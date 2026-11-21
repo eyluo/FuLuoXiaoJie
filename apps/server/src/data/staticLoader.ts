@@ -8,12 +8,13 @@ export interface ExampleWord {
   numbered: string;
   gloss: string;
   freq: number;
+  audio?: string;
 }
 
 export type ExamplesMap = Record<string, ExampleWord[]>;
 
 const STROKE_FILE_RE = /^u[0-9a-f]{4,6}\.json$/;
-const AUDIO_FILE_RE = /^[a-zv]+[1-5]\.mp3$/;
+const AUDIO_FILE_RE = /^(?:[a-zv]+[1-5]|w_[0-9a-f]{4,64})\.mp3$/;
 
 export interface StaticDataStore {
   staticDataDir: string;

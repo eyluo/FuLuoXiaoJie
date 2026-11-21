@@ -23,6 +23,7 @@ export interface ExampleWord {
   numbered: string;
   gloss: string;
   freq: number;
+  audio?: string;
 }
 
 export type ExamplesMap = Record<string, ExampleWord[]>;
@@ -91,9 +92,10 @@ export interface DueCardPayload {
     word: string;
     pinyin: string;
     gloss: string;
+    audio?: string;
   } | null;
   listeningChoices: Array<{ id: string; pinyin: string[]; definition: string }>;
-  examples: Array<{ word: string; pinyin: string; numbered: string; gloss: string }>;
+  examples: Array<{ word: string; pinyin: string; numbered: string; gloss: string; audio?: string }>;
   notes: string;
   previews: ReviewIntervalPreview[];
 }

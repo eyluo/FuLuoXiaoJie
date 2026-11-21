@@ -4,7 +4,7 @@ import type { DueCardPayload } from "../../api/client.js";
 interface DrillRevealDetailsProps {
   payload: DueCardPayload;
   onPlaySyllable: (audioFile: string | null | undefined, fallbackText?: string) => void;
-  onSpeakWord: (word: string) => void;
+  onSpeakWord: (word: string, audioFile?: string | null) => void;
   onInspectNode?: (id: string) => void;
   hidePrimaryHeader?: boolean;
 }
@@ -121,7 +121,7 @@ export function DrillRevealDetails({
                 <button
                   type="button"
                   className="btn btn-ghost btn-icon"
-                  onClick={() => onSpeakWord(ex.word)}
+                  onClick={() => onSpeakWord(ex.word, ex.audio)}
                   aria-label={`Speak ${ex.word}`}
                 >
                   <Volume2 size={14} />

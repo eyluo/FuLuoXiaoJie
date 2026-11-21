@@ -125,7 +125,7 @@ export function generateAnkiCsv(
 
 function escapeAnkiHtml(raw: string): string {
   return raw
-    .replace(/\x1f/g, " ")
+    .replaceAll("\x1f", " ")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")

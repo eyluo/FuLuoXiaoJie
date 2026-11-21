@@ -8,8 +8,14 @@ import json
 import re
 from collections import Counter, defaultdict, deque
 from pathlib import Path
+from typing import Any
 
-from pinyin_utils import cedict_pinyin_to_numbered, is_valid_mandarin_syllable, numbered_to_toned, toned_to_numbered
+from pinyin_utils import (
+    cedict_pinyin_to_numbered,
+    is_valid_mandarin_syllable,
+    numbered_to_toned,
+    toned_to_numbered,
+)
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 CACHE_DIR = ROOT_DIR / ".cache" / "sources"
@@ -45,7 +51,7 @@ def clean_text(s: str) -> str:
 
 def load_mmh_dictionary() -> dict[str, dict]:
     result: dict[str, dict] = {}
-    with open(CACHE_DIR / "mmh_dictionary.txt", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "mmh_dictionary.txt", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -59,7 +65,7 @@ def load_mmh_dictionary() -> dict[str, dict]:
 
 def load_mmh_stroke_counts() -> dict[str, int]:
     counts: dict[str, int] = {}
-    with open(CACHE_DIR / "mmh_graphics.txt", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "mmh_graphics.txt", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -75,7 +81,7 @@ def load_mmh_stroke_counts() -> dict[str, int]:
 def load_cjkvi_ids() -> dict[str, str]:
     """Load CJKVI IDS preferring Mainland Simplified [G] sequence when tagged."""
     ids_map: dict[str, str] = {}
-    with open(CACHE_DIR / "cjkvi_ids.txt", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "cjkvi_ids.txt", encoding="utf-8") as f:
         for line in f:
             if not line or line.startswith("#") or line.startswith(";"):
                 continue
@@ -108,7 +114,7 @@ def load_subtlex_chr() -> tuple[dict[str, tuple[int, int, float]], int]:
     """Return {char: (count, rank_1based, share)} and total_count."""
     rows: list[tuple[str, int]] = []
     total = 0
-    with open(CACHE_DIR / "subtlex_chr.tsv", "r", encoding="gb18030", errors="replace") as f:
+    with open(CACHE_DIR / "subtlex_chr.tsv", encoding="gb18030", errors="replace") as f:
         for idx, line in enumerate(f):
             if idx < 3:
                 continue
@@ -176,7 +182,7 @@ def load_junda() -> tuple[dict[str, tuple[int, int, float]], dict[str, list[str]
 def load_hsk30() -> dict[str, int]:
     """Return {simplified_char: band_int (1..7 where 7 = Band 7-9)}."""
     out: dict[str, int] = {}
-    with open(CACHE_DIR / "hsk30_chars.csv", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "hsk30_chars.csv", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             ch = (row.get("Hanzi") or "").strip()
@@ -217,7 +223,7 @@ def load_cedict_single_chars() -> tuple[dict[str, list[tuple[str, str, bool]]], 
     seen_as_simp: set[str] = set()
     seen_as_trad_diff: set[str] = set()
 
-    with open(CACHE_DIR / "cedict_ts.u8", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "cedict_ts.u8", encoding="utf-8") as f:
         for line in f:
             if not line or line.startswith("#"):
                 continue
@@ -240,11 +246,21 @@ def load_cedict_single_chars() -> tuple[dict[str, list[tuple[str, str, bool]]], 
             if not defs:
                 continue
             is_minor = is_capitalized_proper or all(
-                d.startswith(("surname ", "variant of ", "old variant of ", "abbr. for ", "see ", "Taiwan pr."))
+                d.startswith(
+                    (
+                        "surname ",
+                        "variant of ",
+                        "old variant of ",
+                        "abbr. for ",
+                        "see ",
+                        "Taiwan pr.",
+                    )
+                )
                 for d in defs
             )
             good_defs = [
-                d for d in defs
+                d
+                for d in defs
                 if not d.startswith(("CL:", "old variant of ", "variant of ", "Taiwan pr."))
             ]
             gloss = "; ".join((good_defs or defs)[:3])
@@ -257,7 +273,7 @@ def load_cedict_single_chars() -> tuple[dict[str, list[tuple[str, str, bool]]], 
 def load_subtlex_word_pinyin_weights(cedict_words_path: Path) -> dict[tuple[str, str], int]:
     """Weight readings strictly from multi-character (len>=2) non-proper words, deduplicated per (simp, syls)."""
     wf: dict[str, int] = {}
-    with open(CACHE_DIR / "subtlex_wf.tsv", "r", encoding="gb18030", errors="replace") as f:
+    with open(CACHE_DIR / "subtlex_wf.tsv", encoding="gb18030", errors="replace") as f:
         for idx, line in enumerate(f):
             if idx < 3:
                 continue
@@ -276,7 +292,7 @@ def load_subtlex_word_pinyin_weights(cedict_words_path: Path) -> dict[tuple[str,
     seen_word_readings: set[tuple[str, tuple[str, ...]]] = set()
     char_reading_weight: dict[tuple[str, str], int] = defaultdict(int)
 
-    with open(cedict_words_path, "r", encoding="utf-8") as f:
+    with open(cedict_words_path, encoding="utf-8") as f:
         for line in f:
             if not line or line.startswith("#"):
                 continue
@@ -298,7 +314,7 @@ def load_subtlex_word_pinyin_weights(cedict_words_path: Path) -> dict[tuple[str,
             if key in seen_word_readings:
                 continue
             seen_word_readings.add(key)
-            for ch, syl in zip(simp, syls):
+            for ch, syl in zip(simp, syls, strict=True):
                 char_reading_weight[(ch, syl)] += freq
     return char_reading_weight
 
@@ -344,7 +360,9 @@ def kahn_topo_sort(node_ids: set[str], edges: list[tuple[str, str]]) -> tuple[li
     return order, remaining
 
 
-def find_core_cycle_edges(cycle_superset: set[str], edges: list[tuple[str, str]]) -> list[tuple[str, str]]:
+def find_core_cycle_edges(
+    cycle_superset: set[str], edges: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
     """Prune 0-outdegree descendants via reverse Kahn so only genuine cycle-bearing edges remain."""
     sub_nodes = set(cycle_superset)
     outdeg: dict[str, int] = {n: 0 for n in sub_nodes}
@@ -387,11 +405,14 @@ def rank_character_readings(
 ) -> list[str]:
     """Produce ordered unique numbered Mandarin readings for a character (primary learner reading first)."""
     mmh_list = [
-        toned_to_numbered(p) for p in (mmh.get("pinyin") or [])
+        toned_to_numbered(p)
+        for p in (mmh.get("pinyin") or [])
         if is_valid_mandarin_syllable(toned_to_numbered(p))
     ]
     junda_list = junda_pinyins.get(ch, [])
-    cedict_major = [syl for syl, _g, minor in cedict_list if not minor and is_valid_mandarin_syllable(syl)]
+    cedict_major = [
+        syl for syl, _g, minor in cedict_list if not minor and is_valid_mandarin_syllable(syl)
+    ]
     cedict_all = [syl for syl, _g, _minor in cedict_list if is_valid_mandarin_syllable(syl)]
 
     candidates: list[str] = []
@@ -449,7 +470,8 @@ def build_graph() -> dict:
 
     # Keep only valid Simplified characters (exclude Traditional-only glyphs like 後/妳 unless explicitly in HSK 3.0)
     core_chars = {
-        ch for ch in core_chars
+        ch
+        for ch in core_chars
         if (ch in mmh_dict or ch in cedict_chars)
         and is_cjk_glyph(ch)
         and (ch in hsk30 or ch not in trad_only_chars)
@@ -495,10 +517,12 @@ def build_graph() -> dict:
         # Disambiguate flesh radical '月' -> '⺼' when etymology/radical clearly indicates flesh (肉)
         if parts.get("月", 0) > 0 and ch != "月" and ch != "肉":
             is_flesh = False
-            if etym and etym.get("semantic") in ("肉", "⺼"):
-                is_flesh = True
-            elif mmh and mmh.get("radical") in ("肉", "⺼") and ch not in (
-                "明", "期", "朝", "朗", "望", "朋", "服", "朔", "朕", "朦", "胧"
+            if (
+                etym
+                and etym.get("semantic") in ("肉", "⺼")
+                or mmh
+                and mmh.get("radical") in ("肉", "⺼")
+                and ch not in ("明", "期", "朝", "朗", "望", "朋", "服", "朔", "朕", "朦", "胧")
             ):
                 is_flesh = True
             if is_flesh:
@@ -508,7 +532,7 @@ def build_graph() -> dict:
         # Guard against stroke-count inversions (proper sub-components strictly reduce stroke count)
         ch_strokes = stroke_counts.get(ch)
         if ch_strokes is not None and ch_strokes > 0:
-            cleaned = Counter()
+            cleaned: Counter[str] = Counter()
             for comp, mult in parts.items():
                 comp_strokes = stroke_counts.get(comp)
                 if comp_strokes is not None and comp_strokes >= ch_strokes:
@@ -571,7 +595,9 @@ def build_graph() -> dict:
         core_cycle_edges = find_core_cycle_edges(cycle_superset, list(edge_map.keys()))
         if not core_cycle_edges:
             break
-        print(f"  [cycle-guard] Breaking raw IDS cycle edge: {core_cycle_edges[0][0]} -> {core_cycle_edges[0][1]}")
+        print(
+            f"  [cycle-guard] Breaking raw IDS cycle edge: {core_cycle_edges[0][0]} -> {core_cycle_edges[0][1]}"
+        )
         del edge_map[core_cycle_edges[0]]
 
     # 5. Build active variant_map restricted to graph nodes & guaranteed acyclic + self-loop-free when contracted
@@ -592,7 +618,7 @@ def build_graph() -> dict:
         contracted_nodes = {resolve(n, candidate_map) for n in all_nodes}
         contracted_edges: set[tuple[str, str]] = set()
         has_self_loop = False
-        for src, dst in edge_map.keys():
+        for src, dst in edge_map:
             csrc = resolve(src, candidate_map)
             cdst = resolve(dst, candidate_map)
             if csrc == cdst:
@@ -605,7 +631,9 @@ def build_graph() -> dict:
             continue
         _, cyc = kahn_topo_sort(contracted_nodes, list(contracted_edges))
         if cyc:
-            print(f"  [variant-guard] Skipping {var} -> {canon} (would create cycle in {sorted(cyc)[:5]})")
+            print(
+                f"  [variant-guard] Skipping {var} -> {canon} (would create cycle in {sorted(cyc)[:5]})"
+            )
             continue
         active_variant_map[var] = canon
 
@@ -625,7 +653,11 @@ def build_graph() -> dict:
         mmh = mmh_dict.get(ch) or {}
         etym_raw = raw_etym.get(ch)
         etym_out = None
-        if isinstance(etym_raw, dict) and etym_raw.get("type") in ("pictophonetic", "ideographic", "pictographic"):
+        if isinstance(etym_raw, dict) and etym_raw.get("type") in (
+            "pictophonetic",
+            "ideographic",
+            "pictographic",
+        ):
             etym_out = {"type": etym_raw["type"]}
             if etym_raw.get("semantic"):
                 etym_out["semantic"] = etym_raw["semantic"]
@@ -635,7 +667,9 @@ def build_graph() -> dict:
                 etym_out["hint"] = clean_text(str(etym_raw["hint"]))
 
         cedict_list = cedict_chars.get(ch, [])
-        numbered_readings = rank_character_readings(ch, mmh, junda_pinyins, cedict_list, reading_weights)
+        numbered_readings = rank_character_readings(
+            ch, mmh, junda_pinyins, cedict_list, reading_weights
+        )
         toned_readings = [numbered_to_toned(s) for s in numbered_readings]
 
         definition = ""
@@ -666,29 +700,31 @@ def build_graph() -> dict:
         has_strokes = ch in stroke_counts
         stroke_file = f"u{ord(ch):04x}.json" if has_strokes else None
 
-        nodes_out.append({
-            "id": ch,
-            "isPrimitive": is_primitive,
-            "strokes": stroke_counts.get(ch, 0),
-            "hasStrokes": has_strokes,
-            "strokeFile": stroke_file,
-            "pinyin": toned_readings,
-            "syllables": numbered_readings,
-            "audio": None,
-            "definition": definition,
-            "radical": mmh.get("radical"),
-            "decomposition": raw_decomp.get(ch),
-            "etymology": etym_out,
-            "hskLevel": hsk30.get(ch),
-            "freq": {
-                "subtlexCount": sub_cnt,
-                "subtlexRank": sub_rank,
-                "subtlexShare": round(sub_share, 8),
-                "jundaCount": jun_cnt,
-                "jundaRank": jun_rank,
-                "jundaShare": round(jun_share, 8),
-            },
-        })
+        nodes_out.append(
+            {
+                "id": ch,
+                "isPrimitive": is_primitive,
+                "strokes": stroke_counts.get(ch, 0),
+                "hasStrokes": has_strokes,
+                "strokeFile": stroke_file,
+                "pinyin": toned_readings,
+                "syllables": numbered_readings,
+                "audio": None,
+                "definition": definition,
+                "radical": mmh.get("radical"),
+                "decomposition": raw_decomp.get(ch),
+                "etymology": etym_out,
+                "hskLevel": hsk30.get(ch),
+                "freq": {
+                    "subtlexCount": sub_cnt,
+                    "subtlexRank": sub_rank,
+                    "subtlexShare": round(sub_share, 8),
+                    "jundaCount": jun_cnt,
+                    "jundaRank": jun_rank,
+                    "jundaShare": round(jun_share, 8),
+                },
+            }
+        )
 
     edges_out = [
         {
@@ -700,19 +736,21 @@ def build_graph() -> dict:
         for (src, dst), (mult, role) in sorted(edge_map.items())
     ]
 
-    dataset = {
-        "meta": {
-            "version": "1.0.0",
-            "generatedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "characterCount": len(core_chars),
-            "primitiveCount": len(all_nodes) - len(core_chars),
-            "nodeCount": len(nodes_out),
-            "edgeCount": len(edges_out),
-            "subtlexTotalCount": subtlex_total,
-            "jundaTotalCount": junda_total,
-            "subtlexCoveragePct": round(subtlex_cov * 100, 3),
-            "jundaCoveragePct": round(junda_cov * 100, 3),
-        },
+    meta: dict[str, Any] = {
+        "version": "1.0.0",
+        "generatedAt": datetime.datetime.now(datetime.UTC).isoformat(),
+        "characterCount": len(core_chars),
+        "primitiveCount": len(all_nodes) - len(core_chars),
+        "nodeCount": len(nodes_out),
+        "edgeCount": len(edges_out),
+        "subtlexTotalCount": subtlex_total,
+        "jundaTotalCount": junda_total,
+        "subtlexCoveragePct": round(subtlex_cov * 100, 3),
+        "jundaCoveragePct": round(junda_cov * 100, 3),
+    }
+
+    dataset: dict[str, Any] = {
+        "meta": meta,
         "variantMap": active_variant_map,
         "nodes": nodes_out,
         "edges": edges_out,
@@ -720,11 +758,13 @@ def build_graph() -> dict:
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     out_path = DATA_DIR / "graph.json"
-    out_path.write_text(json.dumps(dataset, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(dataset, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
     print(
         f"Wrote {out_path} ({out_path.stat().st_size:,} bytes) | "
-        f"SUBTLEX cov: {dataset['meta']['subtlexCoveragePct']}%, "
-        f"Jun Da cov: {dataset['meta']['jundaCoveragePct']}%"
+        f"SUBTLEX cov: {meta['subtlexCoveragePct']}%, "
+        f"Jun Da cov: {meta['jundaCoveragePct']}%"
     )
     return dataset
 

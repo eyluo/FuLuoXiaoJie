@@ -41,7 +41,7 @@ def build_examples() -> dict[str, list[dict]]:
 
     # Load SUBTLEX-CH word frequencies
     wf: dict[str, int] = {}
-    with open(CACHE_DIR / "subtlex_wf.tsv", "r", encoding="gb18030", errors="replace") as f:
+    with open(CACHE_DIR / "subtlex_wf.tsv", encoding="gb18030", errors="replace") as f:
         for idx, line in enumerate(f):
             if idx < 3:
                 continue
@@ -62,7 +62,7 @@ def build_examples() -> dict[str, list[dict]]:
     pattern = re.compile(r"^(\S+)\s+(\S+)\s+\[([^\]]+)\]\s+/(.+)/\s*$")
     word_entries: dict[str, tuple[str, str, str, int, bool, bool]] = {}
 
-    with open(CACHE_DIR / "cedict_ts.u8", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "cedict_ts.u8", encoding="utf-8") as f:
         for line in f:
             if not line or line.startswith("#"):
                 continue
@@ -83,7 +83,8 @@ def build_examples() -> dict[str, list[dict]]:
 
             defs = [d.strip() for d in defs_raw.split("/") if d.strip()]
             clean_defs = [
-                d for d in defs
+                d
+                for d in defs
                 if not d.startswith(("CL:", "variant of ", "old variant of ", "see ", "Taiwan pr."))
             ]
             if not clean_defs:
@@ -92,8 +93,7 @@ def build_examples() -> dict[str, list[dict]]:
             # CC-CEDICT marks proper nouns (places, books, brands, organizations, surnames) with capitalized pinyin
             has_cap_pinyin = any(p[:1].isupper() for p in pinyin_raw.split())
             is_proper = has_cap_pinyin or all(
-                d.startswith(("surname ", "abbr. for "))
-                for d in clean_defs[:1]
+                d.startswith(("surname ", "abbr. for ")) for d in clean_defs[:1]
             )
             gloss = sanitize_gloss(clean_defs)
             if not gloss:
@@ -110,7 +110,9 @@ def build_examples() -> dict[str, list[dict]]:
                 word_entries[simp] = (toned, numbered, gloss, freq, is_proper, is_vulgar)
             else:
                 prev_proper, prev_vulgar = existing[4], existing[5]
-                if (prev_proper and not is_proper) or (prev_proper == is_proper and prev_vulgar and not is_vulgar):
+                if (prev_proper and not is_proper) or (
+                    prev_proper == is_proper and prev_vulgar and not is_vulgar
+                ):
                     word_entries[simp] = (toned, numbered, gloss, freq, is_proper, is_vulgar)
 
     # Index candidate words per character deterministically
@@ -131,18 +133,22 @@ def build_examples() -> dict[str, list[dict]]:
         cands.sort(key=lambda x: (-x[0], -x[1], len(x[2]), x[2]))
         selected = []
         for score, _lb, word, toned, numbered, gloss in cands[:MAX_EXAMPLES_PER_CHAR]:
-            selected.append({
-                "word": word,
-                "pinyin": toned,
-                "numbered": numbered,
-                "gloss": gloss,
-                "freq": score,
-            })
+            selected.append(
+                {
+                    "word": word,
+                    "pinyin": toned,
+                    "numbered": numbered,
+                    "gloss": gloss,
+                    "freq": score,
+                }
+            )
         if selected:
             out[ch] = selected
 
     out_path = DATA_DIR / "examples.json"
-    out_path.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
     print(f"Wrote {out_path} ({out_path.stat().st_size:,} bytes) covering {len(out)} nodes.")
     return out
 
