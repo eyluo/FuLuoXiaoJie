@@ -41,6 +41,10 @@ AUDIO_TARBALLS: dict[str, tuple[str, str]] = {
         f"https://codeload.github.com/davinfifield/mp3-chinese-pinyin-sound/tar.gz/{SHAS['davinfifield_audio']}",
         "/mp3/",
     ),
+    "hugolpz_words_mp3": (
+        f"https://codeload.github.com/hugolpz/audio-cmn/tar.gz/{SHAS['hugolpz_audio']}",
+        "/24k-abr/hsk/",
+    ),
 }
 
 MAX_AUDIO_MEMBER_BYTES = 5 * 1024 * 1024
@@ -55,10 +59,12 @@ def download_file(url: str, dest: Path) -> None:
     req = urllib.request.Request(url, headers={"User-Agent": "FuLuoXiaoJie-ETL/1.0"})
     tmp_path: Path | None = None
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            with tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as tmp:
-                tmp_path = Path(tmp.name)
-                shutil.copyfileobj(resp, tmp)
+        with (
+            urllib.request.urlopen(req, timeout=120) as resp,
+            tempfile.NamedTemporaryFile(dir=dest.parent, delete=False) as tmp,
+        ):
+            tmp_path = Path(tmp.name)
+            shutil.copyfileobj(resp, tmp)
         os.replace(tmp_path, dest)
         tmp_path = None
         print(f"          saved {dest.stat().st_size:,} bytes")

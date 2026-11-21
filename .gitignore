@@ -21,6 +21,9 @@ data/*
 fuluoxiaojie-data/
 
 # Python / OS / IDE
+.venv/
+.mypy_cache/
+.ruff_cache/
 __pycache__/
 *.pyc
 .pytest_cache/

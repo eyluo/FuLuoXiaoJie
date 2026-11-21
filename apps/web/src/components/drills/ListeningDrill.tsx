@@ -8,7 +8,7 @@ interface ListeningDrillProps {
   revealed: boolean;
   onReveal: () => void;
   onPlaySyllable: (audioFile: string | null | undefined, fallbackText?: string) => void;
-  onSpeakWord: (word: string) => void;
+  onSpeakWord: (word: string, audioFile?: string | null) => void;
   onInspectNode: (id: string) => void;
 }
 
@@ -89,7 +89,7 @@ export function ListeningDrill({
               type="button"
               className="btn btn-ghost btn-sm"
               style={{ marginTop: 6 }}
-              onClick={() => onSpeakWord(listeningContext.word)}
+              onClick={() => onSpeakWord(listeningContext.word, listeningContext.audio)}
             >
               <Volume2 size={13} /> Speak word
             </button>

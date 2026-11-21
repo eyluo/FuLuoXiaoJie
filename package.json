@@ -13,7 +13,21 @@
     "data:test": "python3 -m unittest discover -s scripts/build-data -p 'test_*.py' -v",
     "build": "pnpm -r build",
     "dev": "pnpm --parallel --filter './apps/*' dev",
+    "lint": "pnpm run lint:ts && pnpm run lint:py",
+    "lint:ts": "eslint .",
+    "lint:py": "pnpm run lint:py:style && pnpm run lint:py:deps && pnpm run lint:py:types",
+    "lint:py:style": "PATH=.venv/bin:$PATH ruff check scripts/build-data && PATH=.venv/bin:$PATH ruff format --check scripts/build-data",
+    "lint:py:deps": "PATH=.venv/bin:$PATH deptry scripts/build-data",
+    "lint:py:types": "PATH=.venv/bin:$PATH mypy",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.8",
+    "globals": "^17.14.0",
+    "typescript-eslint": "^8.73.0"
   }
 }

@@ -1,16 +1,16 @@
-"""Assemble bundled offline Mandarin syllable MP3 files for all readings in graph.json."""
+"""Assemble bundled offline Mandarin syllable and word MP3 files for graph.json and examples.json."""
 
 from __future__ import annotations
 
 import json
 import os
 import re
-import shutil
 import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from fetch_sources import SHAS
 
@@ -101,12 +101,22 @@ def try_fetch_hugolpz(syllable: str, cache_dir: Path) -> tuple[Path, bool] | Non
                 finally:
                     if tmp_path is not None and tmp_path.exists():
                         tmp_path.unlink(missing_ok=True)
-            except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, UnicodeEncodeError):
+            except (
+                urllib.error.HTTPError,
+                urllib.error.URLError,
+                TimeoutError,
+                UnicodeEncodeError,
+            ):
                 continue
     return None
 
 
-def build_audio() -> dict:
+def word_audio_filename(word: str) -> str:
+    """Return a deterministic ASCII-safe MP3 filename for a Mandarin word."""
+    return f"w_{word.encode('utf-8').hex()}.mp3"
+
+
+def build_audio() -> dict[str, Any]:
     graph_path = DATA_DIR / "graph.json"
     graph = json.loads(graph_path.read_text(encoding="utf-8"))
 
@@ -203,7 +213,70 @@ def build_audio() -> dict:
                 break
         node["audio"] = audio_file
 
-    graph_path.write_text(json.dumps(graph, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    graph_path.write_text(
+        json.dumps(graph, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+
+    # Bundle human-recorded Mandarin word MP3s from hugolpz/audio-cmn (CC-BY-SA) for examples.json
+    examples_path = DATA_DIR / "examples.json"
+    hugo_words_dir = CACHE_DIR / "audio_packs" / "hugolpz_words_mp3"
+    word_stats = {
+        "totalUniqueWords": 0,
+        "bundledWords": 0,
+        "matchedSlots": 0,
+        "totalSlots": 0,
+    }
+    if examples_path.exists():
+        examples: dict[str, list[dict[str, Any]]] = json.loads(
+            examples_path.read_text(encoding="utf-8")
+        )
+        hugo_word_index: dict[str, Path] = {}
+        if hugo_words_dir.exists():
+            for p in hugo_words_dir.glob("cmn-*.mp3"):
+                stem = p.stem
+                if stem.startswith("cmn-") and len(stem) > 4:
+                    hugo_word_index[stem[4:]] = p
+
+        unique_words: set[str] = set()
+        for ex_list in examples.values():
+            for ex in ex_list:
+                w = ex.get("word")
+                if isinstance(w, str) and w:
+                    unique_words.add(w)
+
+        resolved_words: dict[str, str] = {}
+        for word in sorted(unique_words):
+            src_word = hugo_word_index.get(word)
+            if src_word is None:
+                continue
+            word_bytes = src_word.read_bytes()
+            if not is_valid_mp3_bytes(word_bytes):
+                continue
+            fname = word_audio_filename(word)
+            (audio_out / fname).write_bytes(word_bytes)
+            resolved_words[word] = fname
+
+        total_slots = 0
+        matched_slots = 0
+        for ex_list in examples.values():
+            for ex in ex_list:
+                total_slots += 1
+                word_fname = resolved_words.get(ex.get("word", ""))
+                if word_fname:
+                    ex["audio"] = word_fname
+                    matched_slots += 1
+                else:
+                    ex.pop("audio", None)
+
+        examples_path.write_text(
+            json.dumps(examples, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
+        word_stats = {
+            "totalUniqueWords": len(unique_words),
+            "bundledWords": len(resolved_words),
+            "matchedSlots": matched_slots,
+            "totalSlots": total_slots,
+        }
 
     manifest = {
         "totalRequired": len(required_syllables),
@@ -212,13 +285,15 @@ def build_audio() -> dict:
         "fromHugolpz": from_hugo,
         "toneFallback": tone_fallback,
         "missing": missing,
+        "wordAudio": word_stats,
     }
     (audio_out / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     total_bytes = sum(p.stat().st_size for p in audio_out.glob("*.mp3"))
     print(
-        f"Bundled {len(resolved)}/{len(required_syllables)} Mandarin syllable MP3s "
-        f"({total_bytes / (1024 * 1024):.1f} MB) | davinfifield={from_davin}, "
-        f"hugolpz={from_hugo}, fallback={tone_fallback}, missing={missing}"
+        f"Bundled {len(resolved)}/{len(required_syllables)} syllable MP3s + "
+        f"{word_stats['bundledWords']}/{word_stats['totalUniqueWords']} word MP3s "
+        f"({total_bytes / (1024 * 1024):.1f} MB total) | davinfifield={from_davin}, "
+        f"hugolpz_syl={from_hugo}, fallback={tone_fallback}, missing={missing}"
     )
     return manifest
 

@@ -164,7 +164,11 @@ export function useMandarinAudio() {
   );
 
   const speakWord = useCallback(
-    (word: string) => {
+    (word: string, audioFile?: string | null) => {
+      if (audioFile) {
+        void playSyllable(audioFile, word);
+        return;
+      }
       playSeqRef.current++;
       stopActive();
       if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -178,7 +182,7 @@ export function useMandarinAudio() {
       if (zhVoice) utter.voice = zhVoice;
       window.speechSynthesis.speak(utter);
     },
-    [stopActive]
+    [playSyllable, stopActive]
   );
 
   return { playSyllable, speakWord, stopActive };

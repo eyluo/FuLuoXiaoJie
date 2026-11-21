@@ -19,7 +19,7 @@ def build_strokes() -> int:
     strokes_dir.mkdir(parents=True, exist_ok=True)
 
     written: set[str] = set()
-    with open(CACHE_DIR / "mmh_graphics.txt", "r", encoding="utf-8") as f:
+    with open(CACHE_DIR / "mmh_graphics.txt", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -51,7 +51,9 @@ def build_strokes() -> int:
             updated = True
 
     if updated:
-        graph_path.write_text(json.dumps(graph, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        graph_path.write_text(
+            json.dumps(graph, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
 
     print(f"Wrote {len(written)} stroke JSON files into {strokes_dir}.")
     return len(written)
